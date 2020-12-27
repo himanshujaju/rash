@@ -3,6 +3,9 @@
 
 require "set"
 
+class SemaphoreError < RuntimeError
+end
+
 KeyData = Struct.new(:access_time, :value)
 
 AccessOrderData = Struct.new(:access_time, :key) do
@@ -91,7 +94,7 @@ class ConcurrentLRUCache
   end
 
   def resize_locked()
-    assert(@semaphore.owned?())
+    semaphore_owned(@semaphore)
     if @current_size > @max_size
       remove_key = @access_order.first.key
       erase_internal_locked(remove_key)
@@ -99,20 +102,28 @@ class ConcurrentLRUCache
   end
 
   def update_access_time_locked(key, accessed_at, existing_ts)
-    assert(@semaphore.owned?())
+    semaphore_owned(@semaphore)
     @key_data[key].access_time = accessed_at
     @access_order.delete(AccessOrderData.new(existing_ts, key))
     @access_order.add(AccessOrderData.new(accessed_at, key))
   end
 
   def erase_internal_locked(key)
-    assert(@semaphore.owned?())
+    semaphore_owned(@semaphore)
     data = @key_data[key]
     @key_data.delete(key)
     @access_order.delete(AccessOrderData.new(data.access_time, key))
     @current_size -= 1
   end
-  private :resize_locked, :update_access_time_locked, :erase_internal_locked
+  
+  def semaphore_owned(semaphore)
+    if !semaphore.owned?()
+      raise SemaphoreError
+    end
+  end
+
+  private :resize_locked, :update_access_time_locked, :erase_internal_locked,
+          :semaphore_owned
 
 end
 
